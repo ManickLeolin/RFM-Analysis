@@ -1,0 +1,546 @@
+---
+title: ""
+subtitle: ""
+author: "Moualeu Manick Leolin"
+date: "`r Sys.Date()`"
+lang: fr
+number_sections: yes
+css: styles.css
+code_folding: show
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: true
+    keep_md: true
+    self_contained: true
+    theme: 
+          bootstrap: cerulean
+
+description: >
+  Dans cet article, nous abordons la problématique de l'évaluation client. Nous mettrons en évidence les raisons pour lesquelles il est important pour une entreprise de connaître les habitudes de consommation de ses clients. À travers l'étude d'un cas pratique, nous présenterons les étapes permettant de segmenter une base client afin d'analyser leur comportement de consommation.
+---
+
+<br> 
+
+<div style="text-align: center;">
+  <h1><br> Étude du modèle RFM : Analyse du comportement client<br></h1></div> 
+
+<style>
+  body {
+    text-align: justify;  /* Applique la justification à tout le texte */
+  }
+</style>
+
+<br> <!-- Ajoute un espace -->
+
+
+# 1.1 Introduction
+
+<br> 
+
+Dans cet article, nous abordons la problématique de l'évaluation client. Nous mettrons en évidence les raisons pour lesquelles il est important pour une entreprise de connaître les habitudes de consommation de ses clients. À travers l'étude d'un cas pratique, nous présenterons les étapes permettant de segmenter une base client afin d'analyser leur comportement de consommation.
+
+La RFM (Recency, Frequency, Monetary Analysis), ou analyse RFM, est une méthode de segmentation et de ciblage comportemental qui permet aux entreprises de classer et de segmenter leurs clients en fonction de trois critères : la récence, la fréquence et le montant des transactions. Cette approche aide les marketeurs et les dirigeants de PME à identifier leur audience cible et à optimiser l'utilisation de leur budget marketing.
+
+<br> 
+
+
+# 1.2 Présentation des 3 facteurs cible d'une analyse RFM
+
+<br> 
+
+Cette méthode attribue des notes aux clients en fonction de 3 facteurs :
+
+ - Récence  : la récence correspond à la date du dernier achat des clients. Ceux qui en ont effectué un récemment, généralement au cours des dernières semaines, ont toujours le produit et la marque en tête. Ils sont donc plus susceptibles d’effectuer un nouvel achat. Vous pouvez mesurer la récence si c’est pertinent dans votre cas. Néanmoins, il est important de noter que pour certaines entreprises, les clients ne commandent pas tous les quatre matins. Par exemple, un constructeur automobile peut vendre une seule voiture à quelqu’un en dix ans.
+
+ - Fréquence  : il s’agit de la fréquence à laquelle le client réalise des transactions, ce qui peut vous aider à identifier les clients réguliers. Par exemple, nombreux sont ceux qui effectuent des achats récurrents et fréquents dans un délai défini. C'est un critère essentiel pour déterminer les personnes les plus susceptibles de choisir à nouveau votre marque après une première acquisition.
+
+ - Montant  : cet élément fait référence à la valeur monétaire qu’un client dépense sur une période donnée. Il est toujours important d’en tenir compte, car cela peut vous donner des indications sur le comportement des consommateurs. Par exemple, vous constaterez peut-être que les clients présentant le montant le plus élevé n’achètent pas d’articles aussi souvent que les autres, mais acquièrent généralement les produits les plus chers.
+
+Les données de chaque facteur permettent aux entreprises de fournir une analyse objective et de déterminer quelle audience cibler pour optimiser leurs campagnes publicitaires et marketing. La plupart des entreprises utilisent une échelle comprise entre 1 et 5, mais vous pouvez choisir toutes les valeurs qui vous semblent nécessaires et utiles pour évaluer vos clients.
+
+<br> 
+
+## Exploration de la segmentation client avec l'analyse RFM et le regroupement K-Means
+  
+<br> 
+
+# 2. Exploration et traitement des données 
+
+<br>
+
+# 2.1 Collecte et  Netoyage des données 
+
+J'ai utilisé les données de vente en ligne de Kaggle, qui comprennent différentes colonnes telles que le numéro de facture, la date de la facture, l'identifiant client, le prix de vente, la quantité, etc. Ces données seront très utiles pour l'analyse. Voici les données de vente en ligne : onlineRetailData.
+
+```{r importtation des library, eval = T, echo = T, warning=F }
+# Charger les bibliothèques nécessaires 
+suppressMessages(library(dplyr))        # Manipulation de données
+suppressMessages(library(data.table))   # Alternative pour la manipulation de données
+suppressMessages(library(ggplot2))      # Visualisation
+suppressMessages(library(lubridate))    # Manipulation des dates et heures
+suppressMessages(library(caret))        # Modélisation et apprentissage automatique
+suppressMessages(library(cluster))      # Clustering et silhouette
+
+
+```
+
+
+```{r importation de la tabla OnlineRetail, eval = T, echo = T, warning=F }
+
+Retail_DF <- read.csv("~/Desktop/TD R/OnlineRetail.csv", sep = ",")
+head(Retail_DF, 5)
+
+```
+```{r }
+
+
+# Supprimer les lignes où Quantity ou UnitPrice est négatif
+Retail_DF <- Retail_DF[Retail_DF$Quantity >= 0 & Retail_DF$UnitPrice >= 0, ]
+
+# Vérifier le DataFrame après suppression
+head(Retail_DF, 5)
+
+# Filtrer les anomalies où Quantity ou UnitPrice est négatif
+anomalies <-Retail_DF[Retail_DF$Quantity < 0 | Retail_DF$UnitPrice < 0, ]
+
+# Afficher les anomalies
+print(anomalies)
+summary(anomalies)
+
+Retail_DF <- na.omit(Retail_DF)
+
+# Afficher les données nettoyées
+head(Retail_DF, 5)
+summary(Retail_DF)
+```
+
+Anomalie est une dataframe vide ce qui montre que notre table à été correctement filtrer et netoyer des données éronnées et manquantes.
+
+
+# 2.2 Data Exploration
+
+Dans ce jeu de données, le prix total du produit n'est pas mentionné, il est séparé en quantité et prix unitaire. J'ai ajouté une nouvelle colonne nommée "Total_price" qui contient le résultat de la multiplication de la quantité par le prix unitaire, ce qui donne le prix total.
+
+Ici, je voulais voir comment les montants sont répartis par clients en regroupant les montants par customerID. La variation est très élevée, c'est pourquoi j'ai décidé de normaliser les données pour obtenir des résultats plus précis et une meilleure visualisation des résultats dans un graphique.
+
+```{r }
+Retail_DF$Total_price <- Retail_DF$Quantity * Retail_DF$UnitPrice
+head(Retail_DF, 5) 
+# Agréger les données en sommant les 'Total_price' par 'CustomerID'
+
+monetary <- Retail_DF %>%
+  group_by(CustomerID) %>%
+  summarise(Total_price = sum(Total_price, na.rm = TRUE)) %>%
+  arrange(Total_price)  # Trier en ordre croissant
+
+# Afficher les premières lignes
+head(monetary)
+tail(monetary)  # Affiche les dernières lignes de la table des monetry
+summary(monetary)
+```
+
+
+
+Nous pouvons remarquer le présence d'articles avec un prix à 0,  ce qui pourrait correspondre à des promotions ou des retours d'articles. Malheureusement, nous avons pas plus de détail mais cela peut àvoir des éffets sur nos graphiques vu le nombres d'articles concerné. Nous allons donc les supprimer. 
+
+```{r  }
+Retail_DF <- Retail_DF[Retail_DF$UnitPrice > 0, ]
+
+monetary <- monetary[monetary$Total_price > 0, ]
+
+
+summary(Retail_DF)
+summary(monetary)
+```
+
+
+# 2.3 Calcule et rôle  des métriques RFM
+
+Pour comprendre le comportement des clients, les métriques RFM jouent un rôle essentiel, car la fréquence et la valeur monétaire influencent la valeur à vie d’un client, tandis que la récence a un impact sur la rétention, une mesure de l'engagement. Ici, je réalise une analyse approfondie de la méthode RFM combinée avec le regroupement K-Means, car elle permet de répondre à des questions cruciales telles que : "Qui sont les meilleurs clients ?" ou "Quels clients contribuent au taux d'attrition ?", etc.
+
+Dans cette analyse, je calcule la fréquence des clients en comptant le nombre de factures (Invoice numbers) pour chaque client. Plus ce nombre est élevé, plus le client achète souvent dans le magasin.
+
+```{r  }
+# Calculer la fréquence des achats (nombre de factures) par client
+frequency <- aggregate(InvoiceNo ~ CustomerID, data = Retail_DF, length)
+# Afficher les premières lignes du résultat
+frequency <- frequency[order(desc(frequency$InvoiceNo)),]
+head(frequency)
+tail(frequency)
+```
+
+
+
+```{r  }
+Retail_DF$InvoiceDate <- lubridate::mdy_hm(Retail_DF$InvoiceDate)
+head(Retail_DF$InvoiceDate)
+
+
+```
+
+
+```{r  }
+
+# Calcul de la différence entre la date maximale et chaque date
+max_date <- max(Retail_DF$InvoiceDate, na.rm = TRUE)
+Retail_DF$Diff <- as.numeric(difftime(max_date, Retail_DF$InvoiceDate, units = "days"))
+# Calcul de la récence minimale (Diff minimale) pour chaque client
+recency <- Retail_DF %>%
+  group_by(CustomerID) %>%
+  summarise(Diff = min(Diff, na.rm = TRUE)) %>%
+  ungroup()
+
+# Afficher les premières lignes de la table des récences
+head(recency)
+summary(recency)
+```
+Ici, nous calculons la récence en soustrayant la date la plus récente de la dernière date de transaction des clients. Nous calculons la valeur monétaire en additionnant tous les montants associés à chaque client. Enfin, nous fusionnons toutes les colonnes dans un seul DataFrame.
+
+
+```{r  }
+RFM <- merge(frequency,recency, by = "CustomerID")
+RFM <- merge(RFM, monetary, by = "CustomerID")
+# Renommer les colonnes du DataFrame RFM
+colnames(RFM) <- c("CustomerID", "frequency", "recency", "monetary")
+head(RFM)
+summary(frequency)  # Voir la distribution complète
+summary(recency)
+summary(monetary)
+
+```
+
+
+
+1. Distribution des variables :
+<br> 
+frequency (Fréquence des achats) :
+Min = 1 : Le client avec la fréquence minimale a effectué 1 achat.
+1er Quartile (Q1) = 17 : 25% des clients ont effectué 17 achats ou moins.
+Médiane = 41 : La moitié des clients ont effectué 41 achats ou moins.
+Moyenne = 91.72 : En moyenne, les clients ont effectué environ 92 achats, ce qui peut être influencé par quelques clients très fréquents.3ème Quartile (Q3) = 100 : 75% des clients ont effectué moins de 100 achats.Max = 7847 : Il y a des clients avec un nombre extrêmement élevé d'achats (7847). Cela peut être une valeur extrême, à examiner pour vérifier si c'est une anomalie ou une transaction particulière.
+
+<br>
+recency (Récence des achats) :
+Min = 0 : Certains clients ont effectué un achat récemment (différence de 0 jours).
+1er Quartile (Q1) = 17.07 : 25% des clients ont effectué leur dernier achat il y a moins de 17 jours.
+Médiane = 50.09 : La moitié des clients ont effectué leur dernier achat dans les 50 derniers jours.
+Moyenne = 92.05 : En moyenne, les clients ont effectué leur dernier achat il y a environ 92 jours, ce qui suggère que certains clients n'ont pas acheté récemment.
+Max = 373.12 : Le client le plus ancien a effectué son dernier achat il y a 373 jours (environ 12 mois). Ce client pourrait être considéré comme inactif.
+
+
+<br>
+monetary (Montant total dépensé) :
+Min = 3.75 : Le client ayant le montant minimal a dépensé 3.75.1er Quartile (Q1) = 307.42 : 25% des clients ont dépensé 307.42 ou moins.
+Médiane = 674.48 : La moitié des clients ont dépensé moins de 674.48.
+Moyenne = 2054.27 : En moyenne, les clients ont dépensé 2054.27, ce qui suggère que quelques clients ont des dépenses très élevées, ce qui influence la moyenne.
+3ème Quartile (Q3) = 1661.74 : 75% des clients ont dépensé moins de 1661.74.
+Max = 280206.02 : Il y a des clients ayant dépensé une somme extrêmement élevée, 280206.02. Cela pourrait aussi être une valeur extrême qu'il conviendrait d'examiner.
+
+<br> 
+
+# Détection des valeurs aberrantes
+
+J'ai calculé les valeurs monétaires (Monetary), de fréquence (Frequency) et de récence (Recency) regroupées par identifiant client. J'ai essayé de représenter ces valeurs sous forme de boîte à moustaches (box-plot). Ces données présentent des valeurs aberrantes qui pourraient affecter la précision des prédictions. Par conséquent, j'ai utilisé une mise à l'échelle standard (standard scaler) pour normaliser les données.
+
+
+```{r  }
+# Réaliser un box-plot pour plusieurs variables en même temps
+RFM_long <- reshape2::melt(RFM, id.vars = "CustomerID", measure.vars = c("frequency", "recency", "monetary"))
+
+ggplot(RFM_long, aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot() +
+  labs(title = "Box-Plot des Variables RFM", x = "Variables", y = "Range") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+La standardisation met chaque variable d'entrée sur une échelle séparée en soustrayant la moyenne (appelée centrage) et en divisant par l'écart-type, afin de décaler la distribution pour qu'elle ait une moyenne de zéro et un écart-type de un.
+```{r  }
+# Sélectionner les colonnes à normaliser
+rfm_normalized <- RFM[, c('frequency', 'recency', 'monetary')]
+
+# Appliquer la normalisation (centrage et réduction)
+rfm_normalized <- scale(rfm_normalized)
+
+# Afficher les données normalisées
+head(rfm_normalized)
+rfm_normalized_df <- as.data.frame(rfm_normalized)
+summary(rfm_normalized_df$frequency)
+summary(rfm_normalized_df$monetary)
+summary(rfm_normalized_df$recency)
+
+```
+Statistiques descriptives des variables normalisées :
+frequency :
+
+Min : -0.3965
+1st Qu. : -0.3266
+Median : -0.2217
+Mean : 0.0000 (c'est un bon signe que la normalisation a été correctement appliquée)
+Max : 33.8977 (ce nombre semble très élevé, il pourrait être utile de vérifier si ces valeurs extrêmes sont des cas rares ou des erreurs dans les données)
+recency :
+
+Min : -0.2281
+1st Qu. : -0.1943
+Median : -0.1535
+Mean : 0.0000 (c'est également une bonne indication de normalisation réussie)
+Max : 30.9428 (comme pour frequency, le max élevé pourrait signaler des valeurs extrêmes à vérifier)
+monetary :
+
+Min : -0.9204
+1st Qu. : -0.7497
+Median : -0.4195
+Mean : 0.0000
+Max : 2.8104 (les valeurs sont désormais plus raisonnables ici)
+Interprétation générale :
+Moyenne proche de 0 et écart-type proche de 1 pour toutes les variables, ce qui confirme que la normalisation a bien été effectuée.
+```{r  }
+
+
+# Charger les bibliothèques nécessaires
+library(ggplot2)
+library(reshape2)
+
+# Conversion du DataFrame en format long pour le box-plot
+rfm_normalized_plot <- melt(rfm_normalized, measure.vars = c("frequency", "recency", "monetary"))
+
+# Renommer la colonne 'Var2' en 'variable'
+colnames(rfm_normalized_plot) <- c("Var1", "variable", "value")
+
+head(rfm_normalized_plot)
+# Tracer le box-plot
+ggplot(rfm_normalized_plot, aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot() +
+  labs(title = "Box-Plot des Variables RFM", x = "Variables", y = "Plage des valeurs normalisées") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+
+
+```
+
+```{r  }
+head(rfm_normalized_plot)
+summary(rfm_normalized_plot)
+# Fonction pour traiter les outliers
+remove_outliers <- function(data, column_name) {
+  Q1 <- quantile(data[[column_name]], 0.25)
+  Q3 <- quantile(data[[column_name]], 0.75)
+  IQR <- Q3 - Q1
+  
+  # Définir les limites
+  lower_limit <- Q1 - 1.5 * IQR
+  upper_limit <- Q3 + 1.5 * IQR
+  
+  # Filtrer les données pour conserver uniquement les valeurs dans les limites
+  data <- data[data[[column_name]] >= lower_limit & data[[column_name]] <= upper_limit, ]
+  return(data)
+}
+
+# Appliquer la fonction sur chaque variable de rfm_normalized_plot
+rfm_cleaned <- rfm_normalized_plot
+rfm_cleaned <- remove_outliers(rfm_cleaned, "value")
+
+# Vérifier le résultat
+summary(rfm_cleaned)
+
+# Refaire le box-plot
+ggplot(rfm_cleaned, aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot() +
+  labs(title = "Box-Plot des Variables RFM (Après traitement des outliers)", 
+       x = "Variables", 
+       y = "Plage des valeurs normalisées") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+  
+ 
+
+
+```
+
+```{r  }
+#summary(rfm_normalized_plot)
+# Calcul des seuils pour chaque variable
+thresholds <- data.frame(
+  variable = c("frequency", "monetary", "recency"),
+  lower = sapply(rfm_normalized, function(x) quantile(x, 0.25) - 1.5 * IQR(x)),
+  upper = sapply(rfm_normalized, function(x) quantile(x, 0.75) + 1.5 * IQR(x))
+)
+
+head(thresholds)
+
+```
+
+ # 3. Exploration de la segmentation client avec l’analyse RFM
+```{r  }
+# Création des segments
+rfm_normalized <- as.data.frame(rfm_normalized)
+
+rfm_segmented <- rfm_normalized %>%
+  mutate(
+    segment_frequency = case_when(
+      frequency < thresholds$lower[1] ~ "Outlier négatif",
+      frequency > thresholds$upper[1] ~ "Outlier positif",
+      TRUE ~ "Normal"
+    ),
+    segment_monetary = case_when(
+      monetary < thresholds$lower[2] ~ "Outlier négatif",
+      monetary > thresholds$upper[2] ~ "Outlier positif",
+      TRUE ~ "Normal"
+    ),
+    segment_recency = case_when(
+      recency < thresholds$lower[3] ~ "Outlier négatif",
+      recency > thresholds$upper[3] ~ "Outlier positif",
+      TRUE ~ "Normal"
+    )
+  )
+
+
+```
+
+# 3.1 Analyse des segments
+
+Interprétation des segments :
+
+segment_frequency :
+
+"Normal" : Valeur de fréquence dans la moyenne.
+"Outlier positif" : Fréquence très élevée (client très actif).
+
+segment_monetary :
+
+"Outlier positif" : Client avec une valeur monétaire élevée (dépense beaucoup).
+"Outlier négatif" : Client avec une valeur monétaire très faible.
+
+segment_recency :
+
+"Outlier positif" : Client récemment actif (achat récent).
+"Outlier négatif" : Client qui n’a pas acheté depuis longtemps.
+
+```{r  }
+head(rfm_segmented)
+table(rfm_segmented$segment_frequency)
+table(rfm_segmented$segment_monetary)
+table(rfm_segmented$segment_recency)
+
+
+```
+
+```{r  }
+ggplot(rfm_segmented, aes(x = segment_frequency, fill = segment_frequency)) +
+  geom_bar() +
+  labs(title = "Distribution des Segments - Fréquence", x = "Segment", y = "Nombre de clients") +
+  theme_minimal()
+
+
+best_clients <- rfm_segmented %>% filter(segment_frequency == "Outlier positif")
+summary(best_clients)
+
+
+
+
+```
+
+```{r  }
+at_risk_clients <- rfm_segmented %>% filter(segment_monetary == "Outlier négatif")
+summary(at_risk_clients)
+
+ggplot(rfm_segmented, aes(x = segment_frequency, y = frequency, fill = segment_frequency)) +
+  geom_boxplot() +
+  labs(title = "Comparaison des Fréquences par Segment", x = "Segment", y = "Fréquence") +
+  theme_minimal()
+
+
+```
+```{r }
+# 1. Préparation des données
+rfm_normalized <- rfm_normalized[, c("frequency", "recency", "monetary")]
+
+# 2. Déterminer le nombre optimal de clusters (méthode de l'inertie - Elbow method)
+set.seed(123)
+wss <- sapply(1:10, function(k) {
+  kmeans(rfm_normalized, centers = k, nstart = 50)$tot.withinss
+})
+
+# Visualisation de l'inertie
+plot(1:10, wss, type = "b", pch = 19, frame = FALSE, 
+     xlab = "Nombre de clusters K",
+     ylab = "Inertie totale (Within Sum of Squares)",
+     main = "Méthode du coude pour choisir K")
+
+# 3. Appliquer K-Means avec le nombre optimal de clusters (par exemple, K = 4)
+set.seed(123)
+kmeans_model <- kmeans(rfm_normalized, centers = 6, nstart = 50)
+
+# 4. Ajouter les labels des clusters à vos données
+rfm_segmented$cluster <- as.factor(kmeans_model$cluster)
+
+# 5. Résumé des clusters
+summary_clusters <- aggregate(rfm_normalized, by = list(Cluster = rfm_segmented$cluster), mean)
+print(summary_clusters)
+
+# 6. Visualisation des clusters (exemple : graphique en 2D avec PCA)
+
+pca_res <- prcomp(rfm_normalized, scale = TRUE)
+pca_data <- data.frame(pca_res$x[, 1:2], Cluster = rfm_segmented$cluster)
+
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(alpha = 0.6, size = 3) +
+  labs(title = "Visualisation des Clusters K-Means",
+       x = "Composante Principale 1",
+       y = "Composante Principale 2") +
+  theme_minimal()
+
+
+
+```
+
+<br> 
+Cluster	Frequency (Fréquence)	Recency (Récence)	Monetary (Valeur Monétaire)	Profil probable
+<br> 
+1	Faible	Très récent	Faible	Nouveaux clients ou clients irréguliers
+<br> 
+2	Faible	Moyennement récent	Faible	Clients dormants (achats peu fréquents et de faible valeur)
+<br> 
+3	Très élevé (24.98)	Ancien	Très élevé (7.66)	Clients fidèles avec des dépenses élevées
+<br> 
+4	Élevé (3.21)	Ancien	Très élevé (21.00)	Clients VIP avec une forte valeur mais inactifs récemment
+<br> 
+5	Faible	Moyennement actif	Faible	Clients standards (ni trop actifs, ni trop dépensiers)
+<br> 
+6	Moyen à élevé	Récemment actif	Moyen	Clients engagés, mais avec une valeur monétaire modérée
+<br> 
+
+
+
+Voici quelques applications métiers basées sur l'analyse RFM et le clustering des clients :
+
+1. Segmentation et Personnalisation Marketing
+Campagnes ciblées : Envoi d’e-mails promotionnels aux clients les plus actifs (Cluster 3 et 4) pour les fidéliser.
+Réactivation des clients dormants : Relancer les clients du Cluster 2 et 5 avec des offres attractives.
+2. Optimisation des Programmes de Fidélité
+Récompenses adaptées : Proposer des remises aux clients les plus rentables (Cluster 4).
+Offres spécifiques aux petits acheteurs : Encourager les clients du Cluster 1 avec des offres adaptées à leur panier moyen.
+3. Gestion des Stocks et Approvisionnement
+Prévision de la demande : Ajuster les stocks en fonction des tendances d’achat des clusters.
+Produits phares : Identifier les articles préférés des meilleurs clients (Cluster 3 et 4) pour éviter les ruptures de stock.
+4. Amélioration de l’Expérience Client
+Support client priorisé : Offrir un service premium aux clients les plus fidèles et rentables.
+Personnalisation du parcours utilisateur : Adapter l’expérience en ligne en fonction du cluster du client.
+5. Optimisation des Tarifs et Promotions
+Stratégie de prix différenciée : Tester des promotions sur des segments spécifiques pour maximiser la conversion.
+Up-selling et Cross-selling : Proposer des recommandations personnalisées basées sur les habitudes d’achat des clusters.
+
+
+
+
+
+
+
+
+
